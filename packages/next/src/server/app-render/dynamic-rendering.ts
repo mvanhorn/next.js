@@ -50,6 +50,7 @@ import { BailoutToCSRError } from '../../shared/lib/lazy-dynamic/bailout-to-csr'
 import { InvariantError } from '../../shared/lib/invariant-error'
 import { INSTANT_VALIDATION_BOUNDARY_NAME } from './instant-validation/boundary-constants'
 import type { ValidationBoundaryTracking } from './instant-validation/boundary-tracking'
+import { isInstantValidationError } from './instant-validation/instant-validation-error'
 
 const hasPostpone = typeof React.unstable_postpone === 'function'
 
@@ -618,6 +619,11 @@ export function useDynamicRouteParams(expression: string) {
         }
         break
       }
+      case 'validation-client': {
+        // Don't check fallbackRouteParams here. We handle params that weren't
+        // provided in the samples using a proxy that throws when accessed.
+        break
+      }
       case 'prerender-runtime':
         throw new InvariantError(
           `\`${expression}\` was called during a runtime prerender. Next.js should be preventing ${expression} from being included in server components statically, but did not in this case.`
@@ -627,9 +633,6 @@ export function useDynamicRouteParams(expression: string) {
         throw new InvariantError(
           `\`${expression}\` was called inside a cache scope. Next.js should be preventing ${expression} from being included in server components statically, but did not in this case.`
         )
-      case 'validation-client':
-        // TODO(instant-validation): in build, this depends on samples
-        break
       case 'prerender-legacy':
       case 'request':
       case 'unstable-cache':
@@ -655,7 +658,8 @@ export function useDynamicSearchParams(expression: string) {
 
   switch (workUnitStore.type) {
     case 'validation-client':
-      // TODO(instant-validation): in build, this depends on samples
+      // During instant validation we try to behave as close to client as possible,
+      // so this shouldn't hang during SSR.
       return
     case 'prerender-client': {
       React.use(
@@ -945,6 +949,14 @@ export function trackThrownErrorInNavigation(
   error: unknown,
   componentStack: string
 ) {
+  // Exhaustive validation errors (accessing undeclared search params, headers,
+  // etc.) should always be reported, even inside validation boundaries.
+  // TODO(instant-validation-build): abort the render instead of doing this
+  if (isInstantValidationError(error)) {
+    dynamicValidation.thrownErrorsOutsideBoundary.push(error)
+    return
+  }
+
   // If we see a validation boundary on the component stack,
   // this error couldn't have blocked a validation boundary from rendering.
   if (hasPrefetchValidationBoundaryRegex.test(componentStack)) {
@@ -1223,6 +1235,16 @@ export function getNavigationDisallowedDynamicReasons(
   dynamicValidation: InstantValidationState,
   boundaryState: ValidationBoundaryTracking
 ): Array<Error> {
+  // Exhaustive validation errors (accessing undeclared search params, headers,
+  // etc.) should always be reported, regardless of boundary state.
+  // TODO(instant-validation-build): abort the render instead of doing this
+  const exhaustiveErrors = dynamicValidation.thrownErrorsOutsideBoundary.filter(
+    (e) => isInstantValidationError(e)
+  ) as Error[]
+  if (exhaustiveErrors.length > 0) {
+    return exhaustiveErrors
+  }
+
   const { validationPreventingErrors } = dynamicValidation
   if (validationPreventingErrors.length > 0) {
     return validationPreventingErrors
