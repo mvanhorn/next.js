@@ -2782,19 +2782,11 @@ impl<C: Comments> VisitMut for ServerActions<C> {
                                             &self.file_name,
                                             &self.cm,
                                             module_items,
-                                            Comment {
-                                                span: DUMMY_SP,
-                                                kind: CommentKind::Block,
-                                                text: generate_server_references_comment(
-                                                    &std::iter::once((&ref_id, export_info))
-                                                        .collect(),
-                                                    Some((
-                                                        &self.file_name,
-                                                        self.file_query.as_ref().map_or("", |v| v),
-                                                    )),
-                                                )
-                                                .into(),
-                                            },
+                                            &std::iter::once((&ref_id, export_info)).collect(),
+                                            Some((
+                                                &self.file_name,
+                                                self.file_query.as_ref().map_or("", |v| v),
+                                            )),
                                         )
                                         .into(),
                                     )),
@@ -3983,8 +3975,41 @@ fn program_to_data_url(
     file_name: &str,
     cm: &Arc<SourceMap>,
     body: Vec<ModuleItem>,
-    prepend_comment: Comment,
+    export_infos_ordered_by_reference_id: &BTreeMap<&Atom, ServerReferenceExportInfo>,
+    entry_path_query: Option<(&str, &str)>,
 ) -> String {
+    // for (key, value) in export_infos_ordered_by_reference_id {
+    //     body.prepend_stmt(ModuleItem::ModuleDecl(ModuleDecl::Import(ImportDecl {
+    //         span: DUMMY_SP,
+    //         specifiers: vec![],
+    //         src: (),
+    //         type_only: false,
+    //         with: Some(Box::new(ObjectLit {
+    //             span: DUMMY_SP,
+    //             props: vec![
+    //                 PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
+    //                     key: PropName::Str(atom!("turbopackEmit").into()),
+    //                     value: "next/actions".into(),
+    //                 }))),
+    //                 PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
+    //                     key: PropName::Str(atom!("turbopackEmitData").into()),
+    //                     value: value.name.clone().into(),
+    //                 }))),
+    //             ],
+    //         })),
+    //         phase: Default::default(),
+    //     })));
+    // }
+
+    let prepend_comment = Comment {
+        span: DUMMY_SP,
+        kind: CommentKind::Block,
+        text: generate_server_references_comment(
+            export_infos_ordered_by_reference_id,
+            entry_path_query,
+        )
+        .into(),
+    };
     let module_span = Span::dummy_with_cmt();
     let comments = SingleThreadedComments::default();
     comments.add_leading(module_span.lo, prepend_comment);
