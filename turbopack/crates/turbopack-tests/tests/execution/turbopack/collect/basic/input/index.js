@@ -1,6 +1,8 @@
 import './lib'
 
-import list from '@turbopack/collect' with { turbopackCollect: 'my-test' }
+const list = __turbopack_collect__({
+  namespace: 'my-test',
+})
 
 it('should work', async () => {
   expect(list).toEqual([

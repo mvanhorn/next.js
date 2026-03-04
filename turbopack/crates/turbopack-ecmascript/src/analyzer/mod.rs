@@ -1879,6 +1879,14 @@ impl JsValue {
                       "URL".to_string(),
                       "The standard URL constructor: https://developer.mozilla.org/en-US/docs/Web/API/URL/URL"
                     ),
+                    WellKnownFunctionKind::TurbopackEmit => (
+                      "__turbopack_emit__".to_string(),
+                      "The __turbopack_emit__ function for emitting data to the bundler"
+                    ),
+                    WellKnownFunctionKind::TurbopackCollect => (
+                      "__turbopack_collect__".to_string(),
+                      "The __turbopack_collect__ function for collecting emitted data from the bundler"
+                    )
                 };
                 if depth > 0 {
                     let i = hints.len();
@@ -3473,6 +3481,8 @@ pub enum WellKnownFunctionKind {
     // The worker_threads Worker class
     NodeWorkerConstructor,
     URLConstructor,
+    TurbopackEmit,
+    TurbopackCollect,
 }
 
 impl WellKnownFunctionKind {
@@ -3649,6 +3659,12 @@ pub mod test_utils {
                 "process" => JsValue::WellKnownObject(WellKnownObjectKind::NodeProcessModule),
                 "Object" => JsValue::WellKnownObject(WellKnownObjectKind::GlobalObject),
                 "Buffer" => JsValue::WellKnownObject(WellKnownObjectKind::NodeBuffer),
+                "__turbopack_emit__" => {
+                    JsValue::WellKnownFunction(WellKnownFunctionKind::TurbopackEmit)
+                }
+                "__turbopack_collect__" => {
+                    JsValue::WellKnownFunction(WellKnownFunctionKind::TurbopackCollect)
+                }
                 _ => v.into_unknown(true, "unknown global"),
             },
             JsValue::Module(ref mv) => {

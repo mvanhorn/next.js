@@ -14,7 +14,7 @@ use turbopack_core::{
     module_graph::{ModuleGraph, chunk_group_info::ChunkGroup},
     output::OutputAssetsWithReferenced,
     reference::ModuleReferences,
-    reference_type::{EcmaScriptModulesReferenceSubType, ReferenceType},
+    reference_type::ReferenceType,
     source::{OptionSource, Source},
 };
 use turbopack_ecmascript::{
@@ -49,10 +49,7 @@ impl CustomModuleType for CollectModuleType {
         module_asset_context: Vc<ModuleAssetContext>,
         reference_type: ReferenceType,
     ) -> Result<Vc<Box<dyn Module>>> {
-        let ReferenceType::EcmaScriptModules(
-            EcmaScriptModulesReferenceSubType::ImportWithTurbopackCollect { namespace },
-        ) = reference_type
-        else {
+        let ReferenceType::Collect { namespace } = reference_type else {
             bail!(
                 "CollectModuleType only supports \
                  EcmaScriptModulesReferenceSubType::ImportWithTurbopackCollect"
