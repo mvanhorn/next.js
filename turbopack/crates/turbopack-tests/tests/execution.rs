@@ -442,6 +442,7 @@ async fn run_test_operation(prepared_test: ResolvedVc<PreparedTest>) -> Result<V
             )],
             module_rules: vec![ModuleRule::new(
                 RuleCondition::ReferenceType(ReferenceType::Collect {
+                    parent_module: None,
                     namespace: rcstr!(""),
                 }),
                 vec![ModuleRuleEffect::ModuleType(ModuleType::Custom(

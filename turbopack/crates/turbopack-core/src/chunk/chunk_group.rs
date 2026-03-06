@@ -117,11 +117,20 @@ pub async fn make_chunk_group(
     chunk_items.extend(
         collecting_modules
             .into_iter()
-            .map(|module| {
+            .map(async |module| {
                 module
-                    // TODO entry chunk group instead of current one
-                    .as_chunk_item(module_graph, *chunking_context, chunk_group.clone())
+                    .as_chunk_item(
+                        module_graph,
+                        *chunking_context,
+                        *new_availability_info.entry_group().context(format!(
+                            "unexpected collect module in non-entry chunk group {}",
+                            chunk_group
+                                .debug_str(&*module_graph.chunk_group_info().await?)
+                                .await?
+                        ))?,
+                    )
                     .to_resolved()
+                    .await
             })
             .try_join()
             .await?
@@ -270,8 +279,10 @@ pub async fn chunk_group_content(
         .await?;
 
     let active_page_entries: Option<FxHashSet<ResolvedVc<Box<dyn Module>>>> =
-        if matches!(chunk_group, ChunkGroup::Entry(_)) {
-            Some(chunk_group.entries().collect())
+        if let ChunkGroup::Entry(entry_modules) = chunk_group {
+            Some(entry_modules.iter().copied().collect())
+        } else if let Some(entry_group) = availability_info.entry_group() {
+            Some(entry_group.await?.iter().copied().collect())
         } else {
             None
         };
@@ -478,6 +489,12 @@ pub async fn chunk_group_content(
     let availability_info = availability_info
         .with_modules(Vc::cell(available_modules))
         .await?;
+
+    let availability_info = if let ChunkGroup::Entry(entry_modules) = chunk_group {
+        availability_info.with_entry_group(ResolvedVc::cell(entry_modules.clone()))
+    } else {
+        availability_info
+    };
 
     let should_merge_modules = if should_merge_modules {
         let merged_modules = module_graph.merged_modules();
