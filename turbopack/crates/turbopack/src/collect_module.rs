@@ -8,7 +8,7 @@ use turbopack_core::{
     self,
     chunk::{AsyncModuleInfo, ChunkItem, ChunkableModule, ChunkingContext},
     context::AssetContext,
-    emit_collect::CollectingModule,
+    emit_collect::{CollectingModule, EmittedModuleReference},
     ident::AssetIdent,
     module::{Module, ModuleSideEffects, Modules, OptionModule},
     module_graph::ModuleGraph,
@@ -318,10 +318,16 @@ impl EcmascriptChunkPlaceable for CollectModuleWithChunkGroup {
             .flatten();
 
         let items = items
-            .map(async |(_data, module, _)| {
+            .map(async |(data, module, _)| {
                 Ok((
                     chunk_item_id_strategy.get_id_from_module(**module).await?,
-                    None::<()>, // TODO ResolvedVc::try_downcast(data.reference).data()
+                    if let Some(reference) =
+                        ResolvedVc::try_sidecast::<Box<dyn EmittedModuleReference>>(data.reference)
+                    {
+                        Some(reference.data().await?)
+                    } else {
+                        None
+                    },
                 ))
             })
             .try_join()
