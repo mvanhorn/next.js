@@ -83,7 +83,13 @@ function loadRuntimeChunkPath(
   try {
     const resolved = path.resolve(RUNTIME_ROOT, chunkPath)
     const chunkModules: CompressedModuleFactories = require(resolved)
-    installCompressedModuleFactories(chunkModules, 0, moduleFactories)
+    installCompressedModuleFactories(
+      chunkModules,
+      0,
+      moduleFactories,
+      moduleCache,
+      instantiateModule
+    )
     loadedChunks.add(chunkPath)
   } catch (cause) {
     let errorMessage = `Failed to load chunk ${chunkPath}`
@@ -117,7 +123,13 @@ function loadChunkAsync<TModule extends Module>(
       // TODO: consider switching to `import()` to enable concurrent chunk loading and async file io
       // However this is incompatible with hot reloading (since `import` doesn't use the require cache)
       const chunkModules: CompressedModuleFactories = require(resolved)
-      installCompressedModuleFactories(chunkModules, 0, moduleFactories)
+      installCompressedModuleFactories(
+        chunkModules,
+        0,
+        moduleFactories,
+        moduleCache,
+        instantiateModule
+      )
       entry = loadedChunk
     } catch (cause) {
       const errorMessage = `Failed to load chunk ${chunkPath} from module ${this.m.id}`

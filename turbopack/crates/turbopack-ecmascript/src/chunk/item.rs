@@ -61,6 +61,7 @@ pub struct EcmascriptChunkItemContent {
     pub additional_ids: SmallVec<[ModuleId; 1]>,
     pub options: EcmascriptChunkItemOptions,
     pub rewrite_source_path: RewriteSourcePath,
+    pub mergeable: bool,
     pub placeholder_for_future_extensions: (),
 }
 
@@ -130,6 +131,9 @@ impl EcmascriptChunkItemContent {
         for additional_id in self.additional_ids.iter() {
             writeln!(code, "{}, ", StringifyJs(&additional_id))?;
         }
+        if self.mergeable {
+            code += "Object.assign(";
+        }
         if self.options.module_and_exports {
             code += "((__turbopack_context__, module, exports) => {\n";
         } else {
@@ -176,6 +180,9 @@ impl EcmascriptChunkItemContent {
         }
 
         code += "})";
+        if self.mergeable {
+            code += ", {mergeable: true})";
+        }
 
         Ok(code.build().resolved_cell())
     }

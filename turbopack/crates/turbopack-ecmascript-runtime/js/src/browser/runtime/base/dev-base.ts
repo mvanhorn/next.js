@@ -556,6 +556,8 @@ function registerChunk(registration: ChunkRegistration) {
       registration as CompressedModuleFactories,
       /* offset= */ 1,
       moduleFactories,
+      devModuleCache,
+      instantiateModule,
       (id: ModuleId) => addModuleToChunk(id, chunkPath)
     )
   }

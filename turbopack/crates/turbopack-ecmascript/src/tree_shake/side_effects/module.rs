@@ -198,7 +198,7 @@ impl EcmascriptChunkPlaceable for SideEffectsModule {
                 ..Default::default()
             },
             additional_ids: Default::default(),
-            placeholder_for_future_extensions: (),
+            ..Default::default()
         }
         .cell())
     }

@@ -537,6 +537,53 @@ function createPromise<T>() {
   }
 }
 
+function installModuleFactory(
+  id: ModuleId,
+  moduleFactoryFn: Function,
+  moduleFactories: ModuleFactories,
+  moduleCache: ModuleCache<Module>,
+  instantiateModule: (
+    id: ModuleId,
+    sourceType: SourceType,
+    sourceData: SourceData
+  ) => ModuleWithDirection,
+  newModuleId?: (id: ModuleId) => void
+) {
+  if (!moduleFactories.has(id)) {
+    moduleFactories.set(id, moduleFactoryFn)
+    newModuleId?.(id)
+    return true
+  }
+
+  // @ts-expect-error
+  if (moduleFactories.get(id)?.mergeable) {
+    let exports
+    if (moduleCache[id]) {
+      exports = moduleCache[id].exports
+    } else {
+      exports = instantiateModule(id, SourceType.Update, undefined).exports
+    }
+
+    // @ts-expect-error
+    let oldData = exports?.__turbopack__merge__?.()
+    moduleFactories.set(id, moduleFactoryFn)
+    if (oldData) {
+      delete moduleCache[id]
+      let newExports = instantiateModule(
+        id,
+        SourceType.Update,
+        undefined
+      ).exports
+      // @ts-expect-error
+      let newFn = newExports.__turbopack__merge__
+      newFn?.(oldData)
+    }
+    return true
+  }
+
+  return false
+}
+
 // Load the CompressedmoduleFactories of a chunk into the `moduleFactories` Map.
 // The CompressedModuleFactories format is
 // - 1 or more module ids
@@ -547,6 +594,12 @@ function installCompressedModuleFactories(
   chunkModules: CompressedModuleFactories,
   offset: number,
   moduleFactories: ModuleFactories,
+  moduleCache: ModuleCache<Module>,
+  instantiateModule: (
+    id: ModuleId,
+    sourceType: SourceType,
+    sourceData: SourceData
+  ) => ModuleWithDirection,
   newModuleId?: (id: ModuleId) => void
 ) {
   let i = offset
@@ -563,35 +616,24 @@ function installCompressedModuleFactories(
       throw new Error('malformed chunk format, expected a factory function')
     }
 
-    // Install the factory for each module ID that doesn't already have one.
-    // When some IDs in this group already have a factory, reuse that existing
-    // group factory for the missing IDs to keep all IDs in the group consistent.
-    // Otherwise, install the factory from this chunk.
     const moduleFactoryFn = chunkModules[end] as Function
-    let existingGroupFactory: Function | undefined = undefined
-    for (let j = i; j < end; j++) {
-      const id = chunkModules[j] as ModuleId
-      const existingFactory = moduleFactories.get(id)
-      if (existingFactory) {
-        existingGroupFactory = existingFactory
-        break
-      }
-    }
-    const factoryToInstall = existingGroupFactory ?? moduleFactoryFn
-
     let didInstallFactory = false
     for (let j = i; j < end; j++) {
-      const id = chunkModules[j] as ModuleId
-      if (!moduleFactories.has(id)) {
-        if (!didInstallFactory) {
-          if (factoryToInstall === moduleFactoryFn) {
-            applyModuleFactoryName(moduleFactoryFn)
-          }
-          didInstallFactory = true
-        }
-        moduleFactories.set(id, factoryToInstall)
-        newModuleId?.(id)
+      if (
+        installModuleFactory(
+          chunkModules[j] as ModuleId,
+          moduleFactoryFn,
+          moduleFactories,
+          moduleCache,
+          instantiateModule,
+          newModuleId
+        )
+      ) {
+        didInstallFactory = true
       }
+    }
+    if (didInstallFactory) {
+      applyModuleFactoryName(moduleFactoryFn)
     }
     i = end + 1 // end is pointing at the last factory advance to the next id or the end of the array.
   }

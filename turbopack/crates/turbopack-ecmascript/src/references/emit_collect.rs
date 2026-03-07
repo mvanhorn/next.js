@@ -1,6 +1,9 @@
 use anyhow::Result;
 use bincode::{Decode, Encode};
-use swc_core::ecma::ast::{Expr, Invalid};
+use swc_core::{
+    ecma::ast::{Expr, Invalid},
+    quote,
+};
 use turbo_rcstr::{RcStr, rcstr};
 use turbo_tasks::{
     NonLocalValue, ResolvedVc, ValueToString, Vc, debug::ValueDebugFormat, trace::TraceRawVcs,
@@ -239,7 +242,10 @@ impl CollectReferenceCodeGen {
             self.path,
             visit_mut_expr,
             |expr: &mut Expr| {
-                *expr = pm.create_require(Expr::Invalid(Invalid::default()));
+                *expr = quote!(
+                    "$v.getList" as Expr,
+                    v: Expr = pm.create_require(Expr::Invalid(Invalid::default()))
+                );
             }
         ));
 

@@ -97,7 +97,9 @@ function registerChunk(registration: ChunkRegistration) {
     installCompressedModuleFactories(
       registration as CompressedModuleFactories,
       /* offset= */ 1,
-      moduleFactories
+      moduleFactories,
+      moduleCache,
+      instantiateModule
     )
   }
 

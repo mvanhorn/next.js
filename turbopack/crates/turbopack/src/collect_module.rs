@@ -1,20 +1,20 @@
 use std::io::Write;
 
-use anyhow::{Result, bail};
-use rustc_hash::FxHashSet;
+use anyhow::{Context, Result, bail};
 use turbo_rcstr::{RcStr, rcstr};
-use turbo_tasks::{FxIndexMap, ResolvedVc, TryJoinIterExt, Vc};
-use turbo_tasks_fs::{VirtualFileSystem, rope::RopeBuilder};
+use turbo_tasks::{FxIndexMap, ResolvedVc, TryJoinIterExt, Vc, turbobail};
+use turbo_tasks_fs::{FileSystem, FileSystemPath, VirtualFileSystem, rope::RopeBuilder};
 use turbopack_core::{
     self,
     chunk::{AsyncModuleInfo, ChunkItem, ChunkableModule, ChunkingContext},
     context::AssetContext,
     emit_collect::CollectingModule,
     ident::AssetIdent,
-    module::{Module, ModuleSideEffects, Modules},
+    module::{Module, ModuleSideEffects, Modules, OptionModule},
     module_graph::ModuleGraph,
-    reference::ModuleReferences,
+    reference::{ModuleReferences, SingleModuleReference},
     reference_type::ReferenceType,
+    resolve::{ResolveErrorMode, origin::PlainResolveOrigin, parse::Request},
     source::{OptionSource, Source},
 };
 use turbopack_ecmascript::{
@@ -23,9 +23,10 @@ use turbopack_ecmascript::{
         EcmascriptChunkItemContent, EcmascriptChunkPlaceable, EcmascriptExports,
         ecmascript_chunk_item,
     },
-    runtime_functions::{TURBOPACK_EXPORT_VALUE, TURBOPACK_IMPORT},
+    runtime_functions::{TURBOPACK_ESM, TURBOPACK_IMPORT},
     utils::StringifyJs,
 };
+use turbopack_resolve::ecmascript::cjs_resolve;
 
 use crate::{ModuleAssetContext, module_options::CustomModuleType};
 
@@ -43,7 +44,7 @@ impl CollectModuleType {
 #[turbo_tasks::value_impl]
 impl CustomModuleType for CollectModuleType {
     #[turbo_tasks::function]
-    fn create_module(
+    async fn create_module(
         self: turbo_tasks::Vc<Self>,
         _source: Vc<Box<dyn Source>>,
         asset_context: Vc<ModuleAssetContext>,
@@ -51,6 +52,7 @@ impl CustomModuleType for CollectModuleType {
     ) -> Result<Vc<Box<dyn Module>>> {
         let ReferenceType::Collect {
             namespace,
+            // TODO remove
             parent_module,
         } = reference_type
         else {
@@ -61,9 +63,16 @@ impl CustomModuleType for CollectModuleType {
         };
 
         Ok(Vc::upcast(CollectModule::new(
-            *parent_module.unwrap(),
             namespace,
             asset_context,
+            parent_module
+                .unwrap()
+                .ident()
+                .await?
+                .path
+                .root()
+                .await?
+                .join("_")?,
         )))
     }
 
@@ -82,27 +91,60 @@ impl CustomModuleType for CollectModuleType {
 
 #[turbo_tasks::value]
 pub struct CollectModule {
-    // TODO have a different way of having unique collect modules per page. This still breaks if
-    // the collect module is imported in shared code
-    parent_module: ResolvedVc<Box<dyn Module>>,
     namespace: RcStr,
     asset_context: ResolvedVc<ModuleAssetContext>,
+    root_path: FileSystemPath,
 }
 
 #[turbo_tasks::value_impl]
 impl CollectModule {
     #[turbo_tasks::function]
     pub fn new(
-        parent_module: ResolvedVc<Box<dyn Module>>,
         namespace: RcStr,
         asset_context: ResolvedVc<ModuleAssetContext>,
+        root_path: FileSystemPath,
     ) -> Vc<Self> {
         CollectModule {
-            parent_module,
             namespace,
             asset_context,
+            root_path,
         }
         .cell()
+    }
+
+    /// Resolve the `next/dist/server/app-render/work-async-storage.external` module
+    /// so it can be imported via TURBOPACK_IMPORT in the generated JS code.
+    #[turbo_tasks::function]
+    async fn work_async_storage_module(&self) -> Result<Vc<OptionModule>> {
+        if matches!(
+            &**self.asset_context.await?.layer().name(),
+            "client" | "app-client"
+        ) {
+            return Ok(Vc::cell(None));
+        }
+
+        let origin =
+            PlainResolveOrigin::new(Vc::upcast(*self.asset_context), self.root_path.clone());
+
+        let result = cjs_resolve(
+            Vc::upcast(origin),
+            Request::parse_string(rcstr!(
+                "next/dist/server/app-render/work-async-storage.external"
+            )),
+            Default::default(),
+            None,
+            ResolveErrorMode::Error,
+        )
+        .await?;
+
+        Ok(Vc::cell(Some(
+            result
+                .primary_modules_ref()
+                .await?
+                .first()
+                .copied()
+                .context("failed to resolve work-async-storage")?,
+        )))
     }
 }
 
@@ -117,12 +159,9 @@ fn virtual_fs() -> Vc<VirtualFileSystem> {
 impl Module for CollectModule {
     #[turbo_tasks::function]
     async fn ident(&self) -> Result<Vc<AssetIdent>> {
-        Ok(self
-            .parent_module
-            .ident()
-            .with_modifier(rcstr!("collect"))
-            .with_modifier(self.namespace.clone())
-            .with_layer(self.asset_context.await?.layer()))
+        Ok(AssetIdent::from_path(virtual_fs().root().owned().await?)
+            .with_layer(self.asset_context.await?.layer().clone())
+            .with_modifier(self.namespace.clone()))
     }
 
     #[turbo_tasks::function]
@@ -131,8 +170,17 @@ impl Module for CollectModule {
     }
 
     #[turbo_tasks::function]
-    fn references(&self) -> Vc<ModuleReferences> {
-        ModuleReferences::empty()
+    async fn references(self: Vc<Self>) -> Result<Vc<ModuleReferences>> {
+        let module = self.work_async_storage_module().await?;
+        if let Some(module) = &*module {
+            Ok(Vc::cell(vec![ResolvedVc::upcast(
+                SingleModuleReference::new(**module, rcstr!("work-async-storage"))
+                    .to_resolved()
+                    .await?,
+            )]))
+        } else {
+            Ok(Vc::cell(vec![]))
+        }
     }
 
     #[turbo_tasks::function]
@@ -233,17 +281,24 @@ impl EcmascriptChunkPlaceable for CollectModuleWithChunkGroup {
         _estimated: bool,
     ) -> Result<Vc<EcmascriptChunkItemContent>> {
         let chunk_item_id_strategy = chunking_context.chunk_item_id_strategy().await?;
+        let chunk_group = self.chunk_group.await?;
 
-        let entries = self
-            .chunk_group
-            .await?
-            .into_iter()
-            .collect::<FxHashSet<_>>();
+        // This is ['[project]/packages/next/dist/esm/build/templates/app-page.js?page=/second/page
+        // { MODULE_0 => "app/layout.js [app-rsc] (ecmascript, Next.js Server Component)", ...,
+        // MODULE_5 => "app/second/page.js [app-rsc] (ecmascript, Next.js Server Component)" }
+        // [app-rsc] (ecmascript)']
+        // or
+        // ["[project]/packages/next/dist/client/next-turbopack.js [client] (ecmascript)",
+        // "[next]/entry/page-loader.ts { PAGE => \"[project]/bench/app-router-server/pages/index.js
+        // [client] (ecmascript)\" } [client] (ecmascript)"]
+        let entry = *chunk_group
+            .last()
+            .context("expected at least one module in chunk group")?;
 
         println!(
             "collect codegen, searching for {:?} {:#?}",
             self.module.ident_string().await?,
-            entries.iter().map(|m| m.ident_string()).try_join().await?
+            entry.ident_string().await?
         );
 
         // TODO don't read whole graph
@@ -253,7 +308,7 @@ impl EcmascriptChunkPlaceable for CollectModuleWithChunkGroup {
             .collected_references
             .iter()
             .find_map(|((page, collect), references)| {
-                if *collect == ResolvedVc::upcast(self.module) && entries.contains(page) {
+                if *collect == ResolvedVc::upcast(self.module) && *page == entry {
                     Some(references.iter())
                 } else {
                     None
@@ -274,22 +329,76 @@ impl EcmascriptChunkPlaceable for CollectModuleWithChunkGroup {
             .into_iter()
             .collect::<FxIndexMap<_, _>>();
 
-        let mut code = RopeBuilder::default();
+        let entry_ident = entry.ident().await?;
+        let Some(page) = (if entry_ident
+            .path
+            .path
+            .ends_with("next/dist/esm/build/templates/middleware.js")
+        {
+            // TODO is this always the case for middleware?
+            Some("/")
+        } else {
+            entry_ident.query.strip_prefix("?page=")
+        }) else {
+            turbobail!(
+                "Expected entry module to have a 'page' query parameter: {:?}",
+                entry.ident_string()
+            );
+        };
 
-        writeln!(code, "{TURBOPACK_EXPORT_VALUE}([")?;
+        let work_storage = if let Some(m) = &*self.module.work_async_storage_module().await? {
+            Some(chunk_item_id_strategy.get_id_from_module(**m).await?)
+        } else {
+            None
+        };
+
+        let mut code = RopeBuilder::default();
+        writeln!(code, "var data = {{ {}: [", StringifyJs(&page))?;
         for (id, data) in items {
             writeln!(
                 code,
-                "{{id: {}, data: {}, import: () => {TURBOPACK_IMPORT}({})}},",
+                "  {{id: {}, data: {}, import: () => {TURBOPACK_IMPORT}({})}},",
                 StringifyJs(&id),
                 StringifyJs(&data),
                 StringifyJs(&id),
             )?;
         }
-        writeln!(code, "]);")?;
+        writeln!(code, "]}};")?;
+
+        code +=
+            "function __turbopack__merge__(v) { if(!v) return data; Object.assign(data, v); }\n";
+
+        if let Some(work_storage) = &work_storage {
+            write!(
+                code,
+                "var workAsyncStorage = {TURBOPACK_IMPORT}({}).workAsyncStorage;",
+                StringifyJs(work_storage)
+            )?;
+            // Node
+            code += "function getList(){
+    var store = workAsyncStorage.getStore();
+    if(!store) throw new Error('__turbopack_collect__.getList() must only be called during \
+                     rendering');
+    return data[store.page];
+}\n";
+        } else {
+            // Browser
+            code += "function getList(){
+    return data[window.next.__internal_src_page];
+}\n";
+        }
+
+        writeln!(
+            code,
+            "{TURBOPACK_ESM}([
+    '__turbopack__merge__', ()=>__turbopack__merge__,
+    'getList', ()=>getList
+]);"
+        )?;
 
         Ok(EcmascriptChunkItemContent {
             inner_code: code.build(),
+            mergeable: true,
             ..Default::default()
         }
         .cell())
