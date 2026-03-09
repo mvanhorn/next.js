@@ -45,7 +45,7 @@ use turbopack_core::{
     module_graph::{
         ModuleGraph, SingleModuleGraph, binding_usage_info::compute_binding_usage_info,
     },
-    reference_type::{InnerAssets, ReferenceType},
+    reference_type::{InnerAssets, ReferenceType, ReferenceTypeCondition},
     resolve::{
         ExternalTraced, ExternalType,
         options::{ImportMap, ImportMapping},
@@ -441,12 +441,13 @@ async fn run_test_operation(prepared_test: ResolvedVc<PreparedTest>) -> Result<V
                 .resolved_cell(),
             )],
             module_rules: vec![ModuleRule::new(
-                RuleCondition::ReferenceType(ReferenceType::Collect {
-                    parent_module: None,
-                    namespace: rcstr!(""),
-                }),
+                RuleCondition::ReferenceType(ReferenceTypeCondition::Collect),
                 vec![ModuleRuleEffect::ModuleType(ModuleType::Custom(
-                    ResolvedVc::upcast(CollectModuleType::new().to_resolved().await?),
+                    ResolvedVc::upcast(
+                        CollectModuleType::new(project_path.clone())
+                            .to_resolved()
+                            .await?,
+                    ),
                 ))],
             )],
             ..Default::default()

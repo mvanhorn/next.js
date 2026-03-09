@@ -425,6 +425,7 @@ pub async fn get_server_module_options_context(
         false,
         next_runtime,
         encryption_key,
+        project_path.clone(),
     )
     .await?;
     let mut foreign_next_server_rules = get_next_server_transforms_rules(
@@ -434,6 +435,7 @@ pub async fn get_server_module_options_context(
         true,
         next_runtime,
         encryption_key,
+        project_path.clone(),
     )
     .await?;
     let mut internal_custom_rules = get_next_server_internal_transforms_rules(

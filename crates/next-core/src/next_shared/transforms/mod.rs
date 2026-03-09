@@ -42,11 +42,11 @@ use turbopack_ecmascript::{CustomTransformer, EcmascriptInputTransform};
 
 use crate::next_image::{StructuredImageModuleType, module::BlurPlaceholderMode};
 
-pub async fn get_collect_rule() -> Result<ModuleRule> {
+pub async fn get_collect_rule(project_path: FileSystemPath) -> Result<ModuleRule> {
     Ok(ModuleRule::new(
         RuleCondition::ReferenceType(ReferenceTypeCondition::Collect),
         vec![ModuleRuleEffect::ModuleType(ModuleType::Custom(
-            ResolvedVc::upcast(CollectModuleType::new().to_resolved().await?),
+            ResolvedVc::upcast(CollectModuleType::new(project_path).to_resolved().await?),
         ))],
     ))
 }

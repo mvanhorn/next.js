@@ -31,13 +31,15 @@ use turbopack_resolve::ecmascript::cjs_resolve;
 use crate::{ModuleAssetContext, module_options::CustomModuleType};
 
 #[turbo_tasks::value]
-pub struct CollectModuleType {}
+pub struct CollectModuleType {
+    project_root: FileSystemPath,
+}
 
 #[turbo_tasks::value_impl]
 impl CollectModuleType {
     #[turbo_tasks::function]
-    pub fn new() -> Vc<Self> {
-        CollectModuleType {}.cell()
+    pub fn new(project_root: FileSystemPath) -> Vc<Self> {
+        CollectModuleType { project_root }.cell()
     }
 }
 
@@ -45,17 +47,12 @@ impl CollectModuleType {
 impl CustomModuleType for CollectModuleType {
     #[turbo_tasks::function]
     async fn create_module(
-        self: turbo_tasks::Vc<Self>,
+        &self,
         _source: Vc<Box<dyn Source>>,
         asset_context: Vc<ModuleAssetContext>,
         reference_type: ReferenceType,
     ) -> Result<Vc<Box<dyn Module>>> {
-        let ReferenceType::Collect {
-            namespace,
-            // TODO remove
-            parent_module,
-        } = reference_type
-        else {
+        let ReferenceType::Collect { namespace } = reference_type else {
             bail!(
                 "CollectModuleType only supports \
                  EcmaScriptModulesReferenceSubType::ImportWithTurbopackCollect"
@@ -65,14 +62,7 @@ impl CustomModuleType for CollectModuleType {
         Ok(Vc::upcast(CollectModule::new(
             namespace,
             asset_context,
-            parent_module
-                .unwrap()
-                .ident()
-                .await?
-                .path
-                .root()
-                .await?
-                .join("_")?,
+            self.project_root.join("_")?,
         )))
     }
 

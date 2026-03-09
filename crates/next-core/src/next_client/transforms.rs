@@ -2,6 +2,7 @@ use anyhow::Result;
 use next_custom_transforms::transforms::strip_page_exports::ExportFilter;
 use turbo_rcstr::RcStr;
 use turbo_tasks::{ResolvedVc, Vc};
+use turbo_tasks_fs::FileSystemPath;
 use turbopack::module_options::{ModuleRule, ModuleRuleEffect, ModuleType, RuleCondition};
 
 use crate::{
@@ -27,6 +28,7 @@ pub async fn get_next_client_transforms_rules(
     mode: Vc<NextMode>,
     foreign_code: bool,
     encryption_key: ResolvedVc<RcStr>,
+    project_path: FileSystemPath,
 ) -> Result<Vec<ModuleRule>> {
     let mut rules = vec![];
 
@@ -117,7 +119,7 @@ pub async fn get_next_client_transforms_rules(
         );
 
         rules.push(get_next_image_rule().await?);
-        rules.push(get_collect_rule().await?);
+        rules.push(get_collect_rule(project_path).await?);
     }
 
     Ok(rules)
