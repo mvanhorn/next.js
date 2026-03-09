@@ -1,5 +1,4 @@
-import '../../../shared-app'
-import '../../../shared-page'
+import './lib'
 
 // eslint-disable-next-line no-undef
 const getList = __turbopack_collect__({
@@ -9,7 +8,7 @@ const getList = __turbopack_collect__({
 export default async function page() {
   const list = await Promise.all(
     getList().map(async (v) => ({
-      id: v.id.slice(v.id.lastIndexOf('/') + 1),
+      id: v.id,
       data: v.data,
       import: (await v.import()).default,
     }))

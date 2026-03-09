@@ -8,7 +8,7 @@ const getList = __turbopack_collect__({
 export async function GET(_req) {
   const list = await Promise.all(
     getList().map(async (v) => ({
-      id: v.id.slice(v.id.lastIndexOf('/') + 1),
+      id: v.id,
       data: v.data,
       import: (await v.import()).default,
     }))
