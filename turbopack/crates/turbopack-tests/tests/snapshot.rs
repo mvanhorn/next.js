@@ -614,11 +614,8 @@ async fn run_test_operation(resource: RcStr) -> Result<Vc<FileSystemPath>> {
     let output_path = project_path.clone();
     while let Some(asset) = queue.pop_front() {
         if let Err(error) = walk_asset(asset, &output_path, &mut seen, &mut queue).await {
-            // ast-grep-ignore: no-context-format
-            return err.context(format!(
-                "Failed to walk asset {}",
-                asset.path().to_string().await?
-            ));
+            // ast-grep-ignore: no-context-turbofmt
+            return err.context(turbofmt!("Failed to walk asset {}", asset.path()).await?);
         }
     }
 
