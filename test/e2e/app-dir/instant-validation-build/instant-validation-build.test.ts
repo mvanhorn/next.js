@@ -155,6 +155,29 @@ describe('instant-validation-build', () => {
       `)
       expect(result.exitCode).toBe(1)
     })
+
+    it('error - accessing undeclared search param via useSearchParams() and catching the error', async () => {
+      const result = await prerender(
+        '/search-params/invalid-undeclared-use-search-params-caught'
+      )
+      expect(extractBuildValidationError(result.cliOutput))
+        .toMatchInlineSnapshot(`
+       "Error: Route "/search-params/invalid-undeclared-use-search-params-caught" accessed searchParam "undeclared" which is not defined in the \`samples\` of \`unstable_instant\`. Add it to the sample's \`searchParams\` array, or \`{ "undeclared": null }\` if it should be absent if it should be absent.
+           at <unknown> (app/search-params/invalid-undeclared-use-search-params-caught/search-params-reader.tsx:9:22)
+          7 |   // 'undeclared' is not in the sample's searchParams, so this should error
+          8 |   try {
+       >  9 |     const value = sp.get('undeclared')
+            |                      ^
+         10 |     // prevent DCE of unused expression
+         11 |     if (Math.random() > 1) {
+         12 |       console.log(value) {
+         digest: 'INSTANT_VALIDATION_ERROR'
+       }
+       Build-time instant validation failed for route "/search-params/invalid-undeclared-use-search-params-caught".
+       Stopping prerender due to instant validation errors."
+      `)
+      expect(result.exitCode).toBe(1)
+    })
   })
 
   describe('cookies', () => {
@@ -319,6 +342,29 @@ describe('instant-validation-build', () => {
          digest: 'INSTANT_VALIDATION_ERROR'
        }
        Build-time instant validation failed for route "/params/invalid-undeclared-use-params/[one]/[two]".
+       Stopping prerender due to instant validation errors."
+      `)
+      expect(result.exitCode).toBe(1)
+    })
+
+    it('error - accessing a param not present in samples via useParams() and catching the error', async () => {
+      const result = await prerender(
+        '/params/invalid-undeclared-use-params-caught/[one]/[two]'
+      )
+      expect(extractBuildValidationError(result.cliOutput))
+        .toMatchInlineSnapshot(`
+       "Error: Route "/params/invalid-undeclared-use-params-caught/[one]/[two]" accessed param "two" which is not defined in the \`samples\` of \`unstable_instant\`. Add it to the sample's \`params\` array.
+           at <unknown> (app/params/invalid-undeclared-use-params-caught/[one]/[two]/params-reader.tsx:9:29)
+          7 |   // 'two' is not in the sample's params, so this should error
+          8 |   try {
+       >  9 |     const twoValue = params.two
+            |                             ^
+         10 |     // prevent DCE of unused expression
+         11 |     if (Math.random() > 1) {
+         12 |       console.log(twoValue) {
+         digest: 'INSTANT_VALIDATION_ERROR'
+       }
+       Build-time instant validation failed for route "/params/invalid-undeclared-use-params-caught/[one]/[two]".
        Stopping prerender due to instant validation errors."
       `)
       expect(result.exitCode).toBe(1)
