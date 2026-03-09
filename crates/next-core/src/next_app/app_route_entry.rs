@@ -4,10 +4,12 @@ use turbo_tasks::{ResolvedVc, Vc, fxindexmap};
 use turbo_tasks_fs::FileSystemPath;
 use turbopack::ModuleAssetContext;
 use turbopack_core::{
+    asset::Asset,
     context::AssetContext,
     module::Module,
     reference_type::{EntryReferenceSubType, ReferenceType},
     source::Source,
+    virtual_source::VirtualSource,
 };
 
 use crate::{
@@ -30,13 +32,14 @@ use crate::{
 pub async fn get_app_route_entry(
     nodejs_context: Vc<ModuleAssetContext>,
     edge_context: Vc<ModuleAssetContext>,
-    source: Vc<Box<dyn Source>>,
+    userland_source: Vc<Box<dyn Source>>,
     page: AppPage,
     project_root: FileSystemPath,
     original_segment_config: Option<Vc<NextSegmentConfig>>,
     next_config: Vc<NextConfig>,
 ) -> Result<Vc<AppEntry>> {
-    let segment_from_source = parse_segment_config_from_source(source, ParseSegmentMode::App);
+    let segment_from_source =
+        parse_segment_config_from_source(userland_source, ParseSegmentMode::App);
     let config = if let Some(original_segment_config) = original_segment_config {
         let mut segment_config = segment_from_source.owned().await?;
         segment_config.apply_parent_config(&*original_segment_config.await?);
@@ -55,7 +58,7 @@ pub async fn get_app_route_entry(
     let original_name: RcStr = page.to_string().into();
     let pathname: RcStr = AppPath::from(page.clone()).to_string().into();
 
-    let path = source.ident().path().owned().await?;
+    let path = userland_source.ident().path().owned().await?;
 
     let inner = rcstr!("INNER_APP_ROUTE");
 
@@ -89,7 +92,7 @@ pub async fn get_app_route_entry(
 
     let userland_module = module_asset_context
         .process(
-            source,
+            userland_source,
             ReferenceType::Entry(EntryReferenceSubType::AppRoute),
         )
         .module()
@@ -99,6 +102,14 @@ pub async fn get_app_route_entry(
     let inner_assets = fxindexmap! {
         inner => userland_module
     };
+
+    let query = qstring::QString::new(vec![("page", page.to_string())]);
+    let virtual_source = Vc::upcast(VirtualSource::new_with_ident(
+        virtual_source
+            .ident()
+            .with_query(RcStr::from(format!("?{query}"))),
+        virtual_source.content(),
+    ));
 
     let mut rsc_entry = module_asset_context
         .process(
