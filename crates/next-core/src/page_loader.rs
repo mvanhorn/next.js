@@ -43,9 +43,18 @@ pub async fn create_page_loader_entry_module(
 
     let file = File::from(result.build());
 
-    let virtual_source = Vc::upcast(VirtualSource::new(
+    let virtual_source = VirtualSource::new(
         page_loader_path,
         AssetContent::file(FileContent::Content(file).cell()),
+    );
+
+    // Add ?page= query parameter so that CollectModuleWithChunkGroup can extract the page path.
+    let query = qstring::QString::new(vec![("page", pathname.to_string())]);
+    let virtual_source = Vc::upcast(VirtualSource::new_with_ident(
+        virtual_source
+            .ident()
+            .with_query(RcStr::from(format!("?{query}"))),
+        virtual_source.content(),
     ));
 
     let module = client_context

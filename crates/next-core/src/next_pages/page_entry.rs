@@ -140,6 +140,13 @@ pub async fn create_page_ssr_entry_module(
     )
     .await?;
 
+    // Add ?page= query parameter so that CollectModuleWithChunkGroup can extract the page path.
+    let query = qstring::QString::new(vec![("page", definition_page.to_string())]);
+    source = Vc::upcast(VirtualSource::new_with_ident(
+        source.ident().with_query(RcStr::from(format!("?{query}"))),
+        source.content(),
+    ));
+
     // When we're building the instrumentation page (only when the
     // instrumentation file conflicts with a page also labeled
     // /instrumentation) hoist the `register` method.
