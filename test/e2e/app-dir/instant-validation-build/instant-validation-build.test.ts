@@ -180,6 +180,84 @@ describe('instant-validation-build', () => {
     })
   })
 
+  describe('headers', () => {
+    it('headers are correctly read from samples', async () => {
+      const result = await prerender('/headers/valid-headers-in-samples')
+      expectNoValidationErrors(result)
+      // The page asserts on the values
+      expect(result.cliOutput).not.toContain('AssertionError')
+    })
+
+    it('error - .get() of header not present in samples', async () => {
+      const result = await prerender('/headers/invalid-undeclared-header-get')
+      expect(extractBuildValidationError(result.cliOutput))
+        .toMatchInlineSnapshot(`
+       "Error: Route "/headers/invalid-undeclared-header-get" accessed header "undeclaredHeader" which is not defined in the \`samples\` of \`unstable_instant\`. Add it to the sample's \`headers\` array, or \`["undeclaredHeader", null]\` if it should be absent.
+           at g (app/headers/invalid-undeclared-header-get/page.tsx:27:41)
+         25 |   const headersStore = await headers()
+         26 |   // TODO(instant-validation-build): should this throw in addition to aborting?
+       > 27 |   const undeclaredHeader = headersStore.get('undeclaredHeader')
+            |                                         ^
+         28 |   assert.strictEqual(
+         29 |     undeclaredHeader,
+         30 |     undefined, {
+         digest: 'INSTANT_VALIDATION_ERROR'
+       }
+       Build-time instant validation failed for route "/headers/invalid-undeclared-header-get".
+       Stopping prerender due to instant validation errors."
+      `)
+      expect(result.exitCode).toBe(1)
+      // The page asserts on the values
+      expect(result.cliOutput).not.toContain('AssertionError')
+    })
+
+    it('error - .get() of header not present in samples and catching the error', async () => {
+      const result = await prerender(
+        '/headers/invalid-undeclared-header-get-caught'
+      )
+      expect(extractBuildValidationError(result.cliOutput))
+        .toMatchInlineSnapshot(`
+       "Error: Route "/headers/invalid-undeclared-header-get-caught" accessed header "undeclaredHeader" which is not defined in the \`samples\` of \`unstable_instant\`. Add it to the sample's \`headers\` array, or \`["undeclaredHeader", null]\` if it should be absent.
+           at f (app/headers/invalid-undeclared-header-get-caught/page.tsx:28:42)
+         26 |
+         27 |   try {
+       > 28 |     const undeclaredHeader = headerStore.get('undeclaredHeader') // this should throw
+            |                                          ^
+         29 |     // prevent DCE of unused expression
+         30 |     if (Math.random() > 1) {
+         31 |       console.log(undeclaredHeader) {
+         digest: 'INSTANT_VALIDATION_ERROR'
+       }
+       Build-time instant validation failed for route "/headers/invalid-undeclared-header-get-caught".
+       Stopping prerender due to instant validation errors."
+      `)
+      expect(result.exitCode).toBe(1)
+    })
+
+    it('error - .has() of header not present in samples', async () => {
+      const result = await prerender('/headers/invalid-undeclared-header-has')
+      expect(extractBuildValidationError(result.cliOutput))
+        .toMatchInlineSnapshot(`
+       "Error: Route "/headers/invalid-undeclared-header-has" accessed header "undeclaredHeader" which is not defined in the \`samples\` of \`unstable_instant\`. Add it to the sample's \`headers\` array, or \`["undeclaredHeader", null]\` if it should be absent.
+           at g (app/headers/invalid-undeclared-header-has/page.tsx:27:43)
+         25 |   const headerStore = await headers()
+         26 |   // TODO(instant-validation-build): should this throw in addition to aborting?
+       > 27 |   const hasUndeclaredHeader = headerStore.has('undeclaredHeader')
+            |                                           ^
+         28 |   assert.strictEqual(
+         29 |     hasUndeclaredHeader,
+         30 |     false, {
+         digest: 'INSTANT_VALIDATION_ERROR'
+       }
+       Build-time instant validation failed for route "/headers/invalid-undeclared-header-has".
+       Stopping prerender due to instant validation errors."
+      `)
+      expect(result.exitCode).toBe(1)
+      // The page asserts on the values
+      expect(result.cliOutput).not.toContain('AssertionError')
+    })
+  })
+
   describe('cookies', () => {
     it('cookies are correctly read from samples', async () => {
       const result = await prerender('/cookies/valid-cookies-in-samples')
