@@ -3,7 +3,7 @@ use std::{collections::HashSet, sync::atomic::AtomicBool};
 use anyhow::{Context, Result};
 use rustc_hash::{FxHashMap, FxHashSet};
 use turbo_rcstr::rcstr;
-use turbo_tasks::{FxIndexSet, ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt, Vc};
+use turbo_tasks::{FxIndexSet, ResolvedVc, TryFlatJoinIterExt, TryJoinIterExt, Vc, turbobail};
 
 use super::{
     ChunkGroupContent, ChunkItemWithAsyncModuleInfo, ChunkingContext,
@@ -118,17 +118,16 @@ pub async fn make_chunk_group(
         collecting_modules
             .into_iter()
             .map(async |module| {
+                let Some(entry_chunk_group) = new_availability_info.entry_group() else {
+                    turbobail!(
+                        "unexpected collect module in non-entry chunk group {}",
+                        chunk_group
+                            .debug_str(&*module_graph.chunk_group_info().await?)
+                            .await?
+                    );
+                };
                 module
-                    .as_chunk_item(
-                        module_graph,
-                        *chunking_context,
-                        *new_availability_info.entry_group().context(format!(
-                            "unexpected collect module in non-entry chunk group {}",
-                            chunk_group
-                                .debug_str(&*module_graph.chunk_group_info().await?)
-                                .await?
-                        ))?,
-                    )
+                    .as_chunk_item(module_graph, *chunking_context, *entry_chunk_group)
                     .to_resolved()
                     .await
             })
