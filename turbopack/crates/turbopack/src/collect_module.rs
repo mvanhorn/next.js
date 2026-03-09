@@ -285,11 +285,11 @@ impl EcmascriptChunkPlaceable for CollectModuleWithChunkGroup {
             .last()
             .context("expected at least one module in chunk group")?;
 
-        println!(
-            "collect codegen, searching for {:?} {:#?}",
-            self.module.ident_string().await?,
-            entry.ident_string().await?
-        );
+        // println!(
+        //     "collect codegen, searching for {:?} {:#?}",
+        //     self.module.ident_string().await?,
+        //     entry.ident_string().await?
+        // );
 
         let collected_modules = module_graph.collected_modules().await?;
         let items = collected_modules

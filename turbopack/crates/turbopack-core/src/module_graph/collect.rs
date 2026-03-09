@@ -280,25 +280,25 @@ pub async fn collect_graph(graph: Vc<ModuleGraph>) -> Result<Vc<CollectedModules
         }
     }
 
-    println!("result:");
-    println!(
-        "{:#?}",
-        collected_references
-            .iter()
-            .map(async |((page, collecting), references)| Ok((
-                page.ident_string().await?,
-                collecting.ident_string().await?,
-                references
-                    .iter()
-                    .map(async |(data, target, _)| {
-                        Ok((&data.chunking_type, target.ident_string().await?))
-                    })
-                    .try_join()
-                    .await?
-            )))
-            .try_join()
-            .await?
-    );
+    // println!("result:");
+    // println!(
+    //     "{:#?}",
+    //     collected_references
+    //         .iter()
+    //         .map(async |((page, collecting), references)| Ok((
+    //             page.ident_string().await?,
+    //             collecting.ident_string().await?,
+    //             references
+    //                 .iter()
+    //                 .map(async |(data, target, _)| {
+    //                     Ok((&data.chunking_type, target.ident_string().await?))
+    //                 })
+    //                 .try_join()
+    //                 .await?
+    //         )))
+    //         .try_join()
+    //         .await?
+    // );
 
     Ok(CollectedModules {
         collected_references,

@@ -376,24 +376,23 @@ pub async fn compute_module_batches(
 
         let mut pre_batches = PreBatches::new();
 
-        let mut x = vec![];
-        module_graph.traverse_edges_unordered(|parent_info, node| {
-            let Some((_, edge)) = parent_info else {
-                return Ok(());
-            };
+        // let mut x = vec![];
+        // module_graph.traverse_edges_unordered(|parent_info, node| {
+        //     let Some((_, edge)) = parent_info else {
+        //         return Ok(());
+        //     };
 
-            x.push((edge.chunking_type.to_string(), node));
+        //     x.push((edge.chunking_type.to_string(), node));
 
-            Ok(())
-        })?;
-
-        println!(
-            "module_graph.traverse_edges_unordered {:#?}",
-            x.iter()
-                .map(async |m| Ok((&m.0, m.1.ident_string().await?)))
-                .try_join()
-                .await?
-        );
+        //     Ok(())
+        // })?;
+        // println!(
+        //     "module_graph.traverse_edges_unordered {:#?}",
+        //     x.iter()
+        //         .map(async |m| Ok((&m.0, m.1.ident_string().await?)))
+        //         .try_join()
+        //         .await?
+        // );
 
         // Walk the module graph and mark all modules that are boundary modules (referenced from a
         // different chunk group bitmap)
@@ -440,15 +439,15 @@ pub async fn compute_module_batches(
                 .map(|(_, m, _)| *m),
         );
 
-        println!(
-            "boundary_modules {:#?}",
-            pre_batches
-                .boundary_modules
-                .iter()
-                .map(|m| m.ident_string())
-                .try_join()
-                .await?
-        );
+        // println!(
+        //     "boundary_modules {:#?}",
+        //     pre_batches
+        //         .boundary_modules
+        //         .iter()
+        //         .map(|m| m.ident_string())
+        //         .try_join()
+        //         .await?
+        // );
 
         // Pre batches would be incorrect with cycles, so we need to opt-out of pre batches for
         // cycles that include boundary modules
@@ -1016,33 +1015,33 @@ pub async fn compute_module_batches(
             }
         }
 
-        println!(
-            "ModuleBatchesGraph edges {:#?} {:#?}",
-            entries
-                .iter()
-                .map(|m| m.0.ident_string())
-                .try_join()
-                .await?,
-            graph
-                .edge_weights()
-                .map(async |e| {
-                    Ok((
-                        e.ty.to_string(),
-                        if let Some(module) = e.module {
-                            module.ident_string().await.ok()
-                        } else {
-                            None
-                        },
-                        if let Some(module) = e.active_for_page_entry {
-                            module.ident_string().await.ok()
-                        } else {
-                            None
-                        },
-                    ))
-                })
-                .try_join()
-                .await?,
-        );
+        // println!(
+        //     "ModuleBatchesGraph edges {:#?} {:#?}",
+        //     entries
+        //         .iter()
+        //         .map(|m| m.0.ident_string())
+        //         .try_join()
+        //         .await?,
+        //     graph
+        //         .edge_weights()
+        //         .map(async |e| {
+        //             Ok((
+        //                 e.ty.to_string(),
+        //                 if let Some(module) = e.module {
+        //                     module.ident_string().await.ok()
+        //                 } else {
+        //                     None
+        //                 },
+        //                 if let Some(module) = e.active_for_page_entry {
+        //                     module.ident_string().await.ok()
+        //                 } else {
+        //                     None
+        //                 },
+        //             ))
+        //         })
+        //         .try_join()
+        //         .await?,
+        // );
 
         Ok(ModuleBatchesGraph {
             graph: TracedDiGraph(graph),

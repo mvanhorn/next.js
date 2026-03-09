@@ -287,44 +287,44 @@ pub async fn chunk_group_content(
             None
         };
 
-    let mut x = vec![];
-    module_batches_graph.traverse_edges_from_entries_dfs(
-        entries.clone(),
-        active_page_entries.as_ref(),
-        &mut (),
-        |parent_info, &node, _| {
-            if matches!(node, ModuleOrBatch::None(_)) {
-                return Ok(GraphTraversalAction::Continue);
-            }
+    // let mut x = vec![];
+    // module_batches_graph.traverse_edges_from_entries_dfs(
+    //     entries.clone(),
+    //     active_page_entries.as_ref(),
+    //     &mut (),
+    //     |parent_info, &node, _| {
+    //         if matches!(node, ModuleOrBatch::None(_)) {
+    //             return Ok(GraphTraversalAction::Continue);
+    //         }
 
-            let Some((_, edge)) = parent_info else {
-                return Ok(GraphTraversalAction::Continue);
-            };
+    //         let Some((_, edge)) = parent_info else {
+    //             return Ok(GraphTraversalAction::Continue);
+    //         };
 
-            x.push((edge.ty.to_string(), node));
+    //         x.push((edge.ty.to_string(), node));
 
-            Ok(match &edge.ty {
-                ChunkingType::Async => GraphTraversalAction::Exclude,
-                ChunkingType::Emitted { .. } => GraphTraversalAction::Exclude,
-                ChunkingType::Traced => GraphTraversalAction::Exclude,
-                _ => GraphTraversalAction::Continue,
-            })
-        },
-        |_, _, _| {},
-    )?;
+    //         Ok(match &edge.ty {
+    //             ChunkingType::Async => GraphTraversalAction::Exclude,
+    //             ChunkingType::Emitted { .. } => GraphTraversalAction::Exclude,
+    //             ChunkingType::Traced => GraphTraversalAction::Exclude,
+    //             _ => GraphTraversalAction::Continue,
+    //         })
+    //     },
+    //     |_, _, _| {},
+    // )?;
 
-    println!(
-        "module_batches_graph.traverse_edges_from_entries_dfs {:#?} {:#?}",
-        if let Some(a) = &active_page_entries {
-            Some(a.iter().map(|m| m.ident_string()).try_join().await?)
-        } else {
-            None
-        },
-        x.iter()
-            .map(async |m| Ok((&m.0, m.1.ident_strings().await?)))
-            .try_join()
-            .await?
-    );
+    // println!(
+    //     "module_batches_graph.traverse_edges_from_entries_dfs {:#?} {:#?}",
+    //     if let Some(a) = &active_page_entries {
+    //         Some(a.iter().map(|m| m.ident_string()).try_join().await?)
+    //     } else {
+    //         None
+    //     },
+    //     x.iter()
+    //         .map(async |m| Ok((&m.0, m.1.ident_strings().await?)))
+    //         .try_join()
+    //         .await?
+    // );
 
     module_batches_graph.traverse_edges_from_entries_dfs(
         entries,
@@ -450,27 +450,27 @@ pub async fn chunk_group_content(
         },
     )?;
 
-    println!(
-        "chunked {:#?} {:#?} {:#?}",
-        state
-            .chunkable_items
-            .iter()
-            .map(|m| m.ident_strings())
-            .try_join()
-            .await?,
-        state
-            .async_modules
-            .iter()
-            .map(|m| m.ident_string())
-            .try_join()
-            .await?,
-        state
-            .collecting_modules
-            .iter()
-            .map(|m| m.ident_string())
-            .try_join()
-            .await?
-    );
+    // println!(
+    //     "chunked {:#?} {:#?} {:#?}",
+    //     state
+    //         .chunkable_items
+    //         .iter()
+    //         .map(|m| m.ident_strings())
+    //         .try_join()
+    //         .await?,
+    //     state
+    //         .async_modules
+    //         .iter()
+    //         .map(|m| m.ident_string())
+    //         .try_join()
+    //         .await?,
+    //     state
+    //         .collecting_modules
+    //         .iter()
+    //         .map(|m| m.ident_string())
+    //         .try_join()
+    //         .await?
+    // );
 
     // This needs to use the unmerged items
     let available_modules = state
