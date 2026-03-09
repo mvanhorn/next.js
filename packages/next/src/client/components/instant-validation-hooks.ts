@@ -5,6 +5,7 @@ import { workAsyncStorage } from '../../server/app-render/work-async-storage.ext
 import {
   createExhaustiveParamsProxy,
   createExhaustiveURLSearchParamsProxy,
+  trackMissingSampleErrorAndThrow,
 } from '../../server/app-render/instant-validation/instant-samples'
 import { InstantValidationError } from '../../server/app-render/instant-validation/instant-validation-error'
 
@@ -57,9 +58,11 @@ export function expectCompleteParamsInClientValidation(
           const fallbackParams = workUnitStore.fallbackRouteParams
           if (fallbackParams && fallbackParams.size > 0) {
             const missingParams = Array.from(fallbackParams.keys())
-            throw new InstantValidationError(
-              `Route "${workStore.route}" called ${expression} but param${missingParams.length > 1 ? 's' : ''} ${missingParams.map((p) => `"${p}"`).join(', ')} ${missingParams.length > 1 ? 'are' : 'is'} not defined in the \`samples\` of \`unstable_instant\`. ` +
-                `${expression} requires all route params to be provided.`
+            trackMissingSampleErrorAndThrow(
+              new InstantValidationError(
+                `Route "${workStore.route}" called ${expression} but param${missingParams.length > 1 ? 's' : ''} ${missingParams.map((p) => `"${p}"`).join(', ')} ${missingParams.length > 1 ? 'are' : 'is'} not defined in the \`samples\` of \`unstable_instant\`. ` +
+                  `${expression} requires all route params to be provided.`
+              )
             )
           }
         }

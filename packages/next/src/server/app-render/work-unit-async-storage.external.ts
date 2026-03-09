@@ -23,6 +23,7 @@ import { InvariantError } from '../../shared/lib/invariant-error'
 import type { StagedRenderingController } from './staged-rendering'
 import { RenderStage } from './staged-rendering'
 import type { ValidationBoundaryTracking } from './instant-validation/boundary-tracking'
+import type { InstantValidationSampleTracking } from './instant-validation/instant-samples'
 
 export type WorkUnitPhase = 'action' | 'render' | 'after'
 
@@ -81,6 +82,7 @@ export interface RequestStore extends CommonWorkUnitStore {
   controller?: AbortController
   renderSignal?: AbortSignal
   validationSamples?: InstantValidationSamples
+  validationSampleTracking?: InstantValidationSampleTracking | null
 
   // DEV-only
   usedDynamic?: boolean
@@ -161,6 +163,7 @@ export interface ValidationStoreClient extends PrerenderStoreModernCommon {
   readonly type: 'validation-client'
   readonly boundaryState: ValidationBoundaryTracking | null
   validationSamples: InstantValidationSamples | null
+  validationSampleTracking: InstantValidationSampleTracking | null
   fallbackRouteParams: OpaqueFallbackRouteParams | null
 }
 

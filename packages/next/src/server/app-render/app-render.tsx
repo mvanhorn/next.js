@@ -4133,6 +4133,7 @@ async function spawnStaticShellValidationInDevImpl(
 
   // `samples` from instant config are only used during build
   const validationSamples = null
+  const validationSampleTracking = null
 
   // First we warmup SSR with the runtime chunks. This ensures that when we do
   // the full prerender pass with dynamic tracking module loading won't
@@ -4148,7 +4149,8 @@ async function spawnStaticShellValidationInDevImpl(
     fallbackRouteParams,
     allowEmptyStaticShell,
     ctx,
-    validationSamples
+    validationSamples,
+    validationSampleTracking
   )
 
   debug?.(`Starting static shell validation...`)
@@ -4220,7 +4222,8 @@ async function warmupClientModulesForStagedValidation(
   fallbackRouteParams: OpaqueFallbackRouteParams | null,
   allowEmptyStaticShell: boolean,
   ctx: AppRenderContext,
-  validationSamples: ValidationStoreClient['validationSamples']
+  validationSamples: ValidationStoreClient['validationSamples'],
+  validationSampleTracking: ValidationStoreClient['validationSampleTracking']
 ) {
   const { implicitTags, nonce, workStore } = ctx
 
@@ -4284,6 +4287,7 @@ async function warmupClientModulesForStagedValidation(
       // We're not rendering any validation boundaries yet.
       boundaryState: null,
       validationSamples,
+      validationSampleTracking,
       fallbackRouteParams,
     }
     initialClientPrerenderStore = store
@@ -4574,6 +4578,9 @@ async function validateInstantConfigs(
     collectStagedSegmentData,
   } = ctx.componentMod.InstantValidation()!
 
+  const { createValidationSampleTracking } =
+    require('./instant-validation/instant-samples') as typeof import('./instant-validation/instant-samples')
+
   debug?.('\nStarting depth-based instant validation...')
 
   const loaderTree = ctx.componentMod.routeModule.userland.loaderTree
@@ -4668,9 +4675,13 @@ async function validateInstantConfigs(
         isDebugChannelEnabled
       )
 
-    const dynamicValidation = createInstantValidationState(
+    const instantValidationState = createInstantValidationState(
       payloadResult.createInstantStack
     )
+
+    const validationSampleTracking =
+      validationSamples !== null ? createValidationSampleTracking() : null
+
     const clientDynamicTracking = createDynamicTrackingState(false)
 
     const prerenderStore: PrerenderStore = {
@@ -4693,6 +4704,7 @@ async function validateInstantConfigs(
       boundaryState,
       fallbackRouteParams,
       validationSamples,
+      validationSampleTracking,
     }
 
     let errors: Array<unknown>
@@ -4724,7 +4736,7 @@ async function validateInstantConfigs(
                     trackDynamicHoleInNavigation(
                       workStore,
                       componentStack,
-                      dynamicValidation,
+                      instantValidationState,
                       clientDynamicTracking,
                       payloadResult.hasAmbiguousErrors
                         ? DynamicHoleKind.Runtime
@@ -4737,7 +4749,7 @@ async function validateInstantConfigs(
                   const componentStack = errorInfo.componentStack
                   if (typeof componentStack === 'string') {
                     trackThrownErrorInNavigation(
-                      dynamicValidation,
+                      instantValidationState,
                       err,
                       componentStack
                     )
@@ -4774,14 +4786,16 @@ async function validateInstantConfigs(
       errors = getNavigationDisallowedDynamicReasons(
         workStore,
         preludeIsEmpty ? PreludeState.Empty : PreludeState.Full,
-        dynamicValidation,
+        instantValidationState,
+        validationSampleTracking,
         boundaryState
       )
     } catch (thrownValue) {
       errors = getNavigationDisallowedDynamicReasons(
         workStore,
         PreludeState.Errored,
-        dynamicValidation,
+        instantValidationState,
+        validationSampleTracking,
         boundaryState
       )
 
@@ -5187,11 +5201,13 @@ async function validateInstantConfigsInBuildImpl(
 
     let errors: unknown[]
     try {
-      errors = await validateInstantConfigInBuildWithSample(
-        ctx,
-        sample,
-        allPossibleFallbackRouteParams,
-        prefilledDataCache
+      errors = await consoleAsyncStorage.run({ dim: true }, () =>
+        validateInstantConfigInBuildWithSample(
+          ctx,
+          sample,
+          allPossibleFallbackRouteParams,
+          prefilledDataCache
+        )
       )
     } catch (err) {
       if (isInstantValidationError(err)) {
@@ -5242,6 +5258,7 @@ async function validateInstantConfigInBuildWithSample(
     createHeadersFromSample,
     createDraftModeForValidation,
     createRelativeURLFromSamples,
+    createValidationSampleTracking,
   } =
     require('./instant-validation/instant-samples') as typeof import('./instant-validation/instant-samples')
 
@@ -5388,6 +5405,7 @@ async function validateInstantConfigInBuildWithSample(
         draftMode,
         rootParams: sampleRootParams,
         validationSamples,
+        validationSampleTracking: createValidationSampleTracking(),
         // These will be set when rendering
         renderResumeDataCache: null,
         prerenderResumeDataCache: null,
@@ -5396,31 +5414,45 @@ async function validateInstantConfigInBuildWithSample(
       }
     }
 
-    const renderErrors: Array<unknown> = []
-    const { accumulatedChunksPromise, startTime, stageController } =
-      await renderWithRestartOnCacheMissInValidation(
-        validationCtx,
-        createRequestStore(),
-        createRequestStore,
-        (requestStore) =>
-          workUnitAsyncStorage.run(
-            requestStore,
-            getRSCPayload,
-            loaderTree,
-            validationCtx,
-            { is404: false }
-          ),
-        (err) => {
-          // TODO(instant-validation-build): do something more sensible here?
-          renderErrors.push(err)
-        },
-        prefilledDataCache
-      )
+    const rscErrors: Array<unknown> = []
+    const {
+      accumulatedChunksPromise,
+      startTime,
+      stageController,
+      requestStore: finalServerStore,
+    } = await renderWithRestartOnCacheMissInValidation(
+      validationCtx,
+      createRequestStore(),
+      createRequestStore,
+      (requestStore) =>
+        workUnitAsyncStorage.run(
+          requestStore,
+          getRSCPayload,
+          loaderTree,
+          validationCtx,
+          { is404: false }
+        ),
+      (err) => {
+        // TODO(instant-validation-build): do something more sensible here?
+        rscErrors.push(err)
+      },
+      prefilledDataCache
+    )
 
     const accumulatedChunks = await accumulatedChunksPromise
     const debugChunks = null // TODO(instant-validation-build): support debugChannel
 
-    // TODO(instant-validation-build): check for exhaustive proxy errors specifically?
+    // Missing sample errors take priority over everything else,
+    // because they prevent us from rendering everything we need to validate.
+    const serverValidationSampleTracking =
+      finalServerStore.validationSampleTracking!
+    if (serverValidationSampleTracking.missingSampleErrors.length > 0) {
+      return serverValidationSampleTracking.missingSampleErrors
+    }
+
+    // We also error for sync IO. This runs after the prerender,
+    // so if we get sync IO errors here, they're likely from the runtime stage --
+    // the prerender probably discovered sync IO in the static stage
     if (
       stageController.currentStage === RenderStage.Abandoned &&
       stageController.syncInterruptReason
@@ -5443,6 +5475,8 @@ async function validateInstantConfigInBuildWithSample(
     // TODO(instant-validation-build): This might warm too much, possibly hitting errors on code that didn't expect
     // to run at build time. For example, we generally don't need to render leaf segments (e.g. __PAGE__) in
     // the Dynamic stage, they're Runtime at best.
+
+    const warmupValidationSamplesTracking = createValidationSampleTracking()
     await warmupClientModulesForStagedValidation(
       'validation-client',
       accumulatedChunks.dynamicChunks,
@@ -5451,10 +5485,15 @@ async function validateInstantConfigInBuildWithSample(
       fallbackRouteParams,
       allowEmptyStaticShell,
       validationCtx,
-      validationSamples
+      validationSamples,
+      warmupValidationSamplesTracking
     )
+    if (warmupValidationSamplesTracking.missingSampleErrors.length > 0) {
+      return warmupValidationSamplesTracking.missingSampleErrors
+    }
 
-    const errors = await validateInstantConfigs(
+    // TODO(instant-validation-build): do we have to log errors from RSC?
+    return await validateInstantConfigs(
       accumulatedChunks,
       debugChunks,
       startTime,
@@ -5464,14 +5503,6 @@ async function validateInstantConfigInBuildWithSample(
       undefined, // hmrRefreshHash,
       validationSamples
     )
-
-    // Combine validation errors with render errors (e.g. exhaustive proxy errors)
-    const allErrors = [...renderErrors, ...errors]
-
-    if (allErrors.length > 0) {
-      return allErrors
-    }
-    return []
   })
 }
 

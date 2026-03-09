@@ -12,15 +12,72 @@ import { getSegmentParam } from '../../../shared/lib/router/utils/get-segment-pa
 import { parseRelativeUrl } from '../../../shared/lib/router/utils/parse-relative-url'
 import { InvariantError } from '../../../shared/lib/invariant-error'
 import { InstantValidationError } from './instant-validation-error'
+import { workUnitAsyncStorage } from '../work-unit-async-storage.external'
+
+export type InstantValidationSampleTracking = {
+  // TODO(instant-validation-build): track which samples config we used and attribute errors
+  missingSampleErrors: InstantValidationError[]
+}
+
+export function createValidationSampleTracking(): InstantValidationSampleTracking {
+  return {
+    missingSampleErrors: [],
+  }
+}
+
+function getExpectedSampleTracking(): InstantValidationSampleTracking {
+  let validationSampleTracking: InstantValidationSampleTracking | null = null
+  const workUnitStore = workUnitAsyncStorage.getStore()
+  if (workUnitStore) {
+    switch (workUnitStore.type) {
+      case 'request':
+      case 'validation-client':
+        // TODO(instant-validation-build): do we need any special handling for caches?
+        validationSampleTracking =
+          workUnitStore.validationSampleTracking ?? null
+        break
+      case 'cache':
+      case 'private-cache':
+      case 'unstable-cache':
+      case 'prerender-legacy':
+      case 'prerender-ppr':
+      case 'prerender-client':
+      case 'prerender':
+      case 'prerender-runtime':
+        break
+      default:
+        workUnitStore satisfies never
+    }
+  }
+  if (!validationSampleTracking) {
+    throw new InvariantError(
+      'Expected to have a workUnitStore that provides validationSampleTracking'
+    )
+  }
+  return validationSampleTracking
+}
+
+export function trackMissingSampleError(error: InstantValidationError): void {
+  const validationSampleTracking = getExpectedSampleTracking()
+  validationSampleTracking.missingSampleErrors.push(error)
+}
+
+export function trackMissingSampleErrorAndThrow(
+  error: InstantValidationError
+): never {
+  // TODO(instant-validation-build): this should abort the render
+  trackMissingSampleError(error)
+  throw error
+}
 
 // TODO(instant-validation-build): maybe inline this, or rename
-function createExhaustiveError(
+function createMissingSampleError(
   route: string,
   apiName: string,
   accessedName: string,
   sampleArrayName: string,
   nullExample: string
-): Error {
+): InstantValidationError {
   return new InstantValidationError(
     `Route "${route}" accessed ${apiName} "${accessedName}" which is not defined in the \`samples\` ` +
       `of \`unstable_instant\`. Add it to the sample's \`${sampleArrayName}\` array` +
@@ -55,12 +112,14 @@ export function createCookiesFromSample(
         const originalMethod = Reflect.get(target, prop, receiver)
         const wrappedMethod: typeof originalMethod = function (name) {
           if (!declaredNames.has(name)) {
-            throw createExhaustiveError(
-              route,
-              'cookie',
-              name,
-              'cookies',
-              `\`{ name: "${name}", value: null }\``
+            trackMissingSampleErrorAndThrow(
+              createMissingSampleError(
+                route,
+                'cookie',
+                name,
+                'cookies',
+                `\`{ name: "${name}", value: null }\``
+              )
             )
           }
           return originalMethod.call(target, name)
@@ -85,12 +144,14 @@ export function createCookiesFromSample(
           }
 
           if (!declaredNames.has(name)) {
-            throw createExhaustiveError(
-              route,
-              'cookie',
-              name,
-              'cookies',
-              `\`{ name: "${name}", value: null }\``
+            trackMissingSampleErrorAndThrow(
+              createMissingSampleError(
+                route,
+                'cookie',
+                name,
+                'cookies',
+                `\`{ name: "${name}", value: null }\``
+              )
             )
           }
           return originalMethod.call(target, name)
@@ -135,12 +196,14 @@ export function createHeadersFromSample(
         const originalMethod = Reflect.get(target, prop, receiver) as Function
         return function (name: string) {
           if (!declaredNames.has(name.toLowerCase())) {
-            throw createExhaustiveError(
-              route,
-              'header',
-              name,
-              'headers',
-              `\`["${name}", null]\``
+            trackMissingSampleErrorAndThrow(
+              createMissingSampleError(
+                route,
+                'header',
+                name,
+                'headers',
+                `\`["${name}", null]\``
+              )
             )
           }
           return originalMethod.call(target, name)
@@ -189,7 +252,9 @@ export function createExhaustiveParamsProxy<TParams extends Params>(
     get(target, prop, receiver) {
       if (isUserParamAccess(prop)) {
         if (!declaredParamNames.has(prop)) {
-          throw createExhaustiveError(route, 'param', prop, 'params', '')
+          trackMissingSampleErrorAndThrow(
+            createMissingSampleError(route, 'param', prop, 'params', '')
+          )
         }
       }
       return Reflect.get(target, prop, receiver)
@@ -197,7 +262,9 @@ export function createExhaustiveParamsProxy<TParams extends Params>(
     has(target, prop) {
       if (isUserParamAccess(prop)) {
         if (!declaredParamNames.has(prop)) {
-          throw createExhaustiveError(route, 'param', prop, 'params', '')
+          trackMissingSampleErrorAndThrow(
+            createMissingSampleError(route, 'param', prop, 'params', '')
+          )
         }
       }
       return Reflect.has(target, prop)
@@ -230,10 +297,12 @@ export function createExhaustiveSearchParamsProxy(
     get(target, prop, receiver) {
       if (isUserParamAccess(prop)) {
         if (!declaredSearchParamNames.has(prop)) {
-          throw new InstantValidationError(
-            `Route "${route}" accessed searchParam "${prop}" which is not defined in the \`samples\` ` +
-              `of \`unstable_instant\`. Add it to the sample's \`searchParams\` object, ` +
-              `or \`{ "${prop}": null }\` if it should be absent.`
+          trackMissingSampleErrorAndThrow(
+            new InstantValidationError(
+              `Route "${route}" accessed searchParam "${prop}" which is not defined in the \`samples\` ` +
+                `of \`unstable_instant\`. Add it to the sample's \`searchParams\` object, ` +
+                `or \`{ "${prop}": null }\` if it should be absent.`
+            )
           )
         }
       }
@@ -242,10 +311,12 @@ export function createExhaustiveSearchParamsProxy(
     has(target, prop) {
       if (isUserParamAccess(prop)) {
         if (!declaredSearchParamNames.has(prop)) {
-          throw new InstantValidationError(
-            `Route "${route}" accessed searchParam "${prop}" which is not defined in the \`samples\` ` +
-              `of \`unstable_instant\`. Add it to the sample's \`searchParams\` object, ` +
-              `or \`{ "${prop}": null }\` if it should be absent.`
+          trackMissingSampleErrorAndThrow(
+            new InstantValidationError(
+              `Route "${route}" accessed searchParam "${prop}" which is not defined in the \`samples\` ` +
+                `of \`unstable_instant\`. Add it to the sample's \`searchParams\` object, ` +
+                `or \`{ "${prop}": null }\` if it should be absent.`
+            )
           )
         }
       }
@@ -271,12 +342,14 @@ export function createExhaustiveURLSearchParamsProxy<T extends URLSearchParams>(
       if (prop === 'get' || prop === 'getAll' || prop === 'has') {
         return (name: string) => {
           if (typeof name === 'string' && !declaredSearchParamNames.has(name)) {
-            throw createExhaustiveError(
-              route,
-              'searchParam',
-              name,
-              'searchParams',
-              `\`{ "${name}": null }\` if it should be absent`
+            trackMissingSampleErrorAndThrow(
+              createMissingSampleError(
+                route,
+                'searchParam',
+                name,
+                'searchParams',
+                `\`{ "${name}": null }\` if it should be absent`
+              )
             )
           }
           return (value as Function).call(target, name)
@@ -349,6 +422,7 @@ function createPathnameFromRouteAndSampleParams(route: string, params: Params) {
             // in case it pops up somewhere unexpectedly.
             paramValue = [rawSegment]
           } else if (!Array.isArray(paramValue)) {
+            // NOTE: this happens outside of render, so we don't need `trackMissingSampleErrorAndThrow`
             throw new InstantValidationError(
               `Expected sample param value for segment '${rawSegment}' to be an array of strings, got ${typeof paramValue}`
             )
@@ -366,6 +440,7 @@ function createPathnameFromRouteAndSampleParams(route: string, params: Params) {
             // in case it pops up somewhere unexpectedly.
             paramValue = rawSegment
           } else if (typeof paramValue !== 'string') {
+            // NOTE: this happens outside of render, so we don't need `trackMissingSampleErrorAndThrow`
             throw new InstantValidationError(
               `Expected sample param value for segment '${rawSegment}' to be a string, got ${typeof paramValue}`
             )

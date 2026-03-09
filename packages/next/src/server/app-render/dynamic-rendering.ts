@@ -50,7 +50,7 @@ import { BailoutToCSRError } from '../../shared/lib/lazy-dynamic/bailout-to-csr'
 import { InvariantError } from '../../shared/lib/invariant-error'
 import { INSTANT_VALIDATION_BOUNDARY_NAME } from './instant-validation/boundary-constants'
 import type { ValidationBoundaryTracking } from './instant-validation/boundary-tracking'
-import { isInstantValidationError } from './instant-validation/instant-validation-error'
+import type { InstantValidationSampleTracking } from './instant-validation/instant-samples'
 
 const hasPostpone = typeof React.unstable_postpone === 'function'
 
@@ -949,14 +949,6 @@ export function trackThrownErrorInNavigation(
   error: unknown,
   componentStack: string
 ) {
-  // Exhaustive validation errors (accessing undeclared search params, headers,
-  // etc.) should always be reported, even inside validation boundaries.
-  // TODO(instant-validation-build): abort the render instead of doing this
-  if (isInstantValidationError(error)) {
-    dynamicValidation.thrownErrorsOutsideBoundary.push(error)
-    return
-  }
-
   // If we see a validation boundary on the component stack,
   // this error couldn't have blocked a validation boundary from rendering.
   if (hasPrefetchValidationBoundaryRegex.test(componentStack)) {
@@ -1233,16 +1225,15 @@ export function getNavigationDisallowedDynamicReasons(
   workStore: WorkStore,
   prelude: PreludeState,
   dynamicValidation: InstantValidationState,
+  validationSampleTracking: InstantValidationSampleTracking | null,
   boundaryState: ValidationBoundaryTracking
 ): Array<Error> {
-  // Exhaustive validation errors (accessing undeclared search params, headers,
-  // etc.) should always be reported, regardless of boundary state.
-  // TODO(instant-validation-build): abort the render instead of doing this
-  const exhaustiveErrors = dynamicValidation.thrownErrorsOutsideBoundary.filter(
-    (e) => isInstantValidationError(e)
-  ) as Error[]
-  if (exhaustiveErrors.length > 0) {
-    return exhaustiveErrors
+  // If we have errors related to missing samples, those should take precedence over everything else.
+  if (validationSampleTracking) {
+    const { missingSampleErrors } = validationSampleTracking
+    if (missingSampleErrors.length > 0) {
+      return missingSampleErrors
+    }
   }
 
   const { validationPreventingErrors } = dynamicValidation

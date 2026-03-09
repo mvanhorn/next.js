@@ -1106,5 +1106,6 @@
   "1105": "Not implemented: Validation of interception routes",
   "1106": "Invalid sample: Defining cookies via a \"cookie\" header is not supported. Use `cookies: [{ name: ..., value: ...}]` instead.",
   "1107": "Expected sample param value for segment '%s' to be a string, got %s",
-  "1108": "Route \"%s\" called %s but param%s %s %s not defined in the \\`samples\\` of \\`unstable_instant\\`. %s requires all route params to be provided."
+  "1108": "Route \"%s\" called %s but param%s %s %s not defined in the \\`samples\\` of \\`unstable_instant\\`. %s requires all route params to be provided.",
+  "1109": "Expected to have a workUnitStore that provides validationSampleTracking"
 }
