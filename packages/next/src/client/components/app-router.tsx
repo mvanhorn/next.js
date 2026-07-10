@@ -311,14 +311,22 @@ function Router({
       url: string | URL | null | undefined
     ) => {
       const href = window.location.href
+      const newUrl = new URL(url ?? href, href)
       const appHistoryState: AppHistoryState | undefined =
         window.history.state?.__PRIVATE_NEXTJS_INTERNALS_TREE
 
       startTransition(() => {
         dispatchAppRouterAction({
           type: ACTION_RESTORE,
-          url: new URL(url ?? href, href),
-          historyState: appHistoryState,
+          url: newUrl,
+          historyState: appHistoryState
+            ? {
+                ...appHistoryState,
+                // The copied tree belongs to the current history entry, but
+                // the search params must reflect the URL being restored.
+                renderedSearch: newUrl.search,
+              }
+            : undefined,
         })
       })
     }

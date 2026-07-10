@@ -12,6 +12,8 @@ import {
   type NavigationRequestAccumulation,
 } from '../ppr-navigations'
 import type { FlightRouterState } from '../../../../shared/lib/app-router-types'
+import { removeTrailingSlash } from '../../../../shared/lib/router/utils/remove-trailing-slash'
+import { removeBasePath } from '../../../remove-base-path'
 import {
   completeHardNavigation,
   completeTraverseNavigation,
@@ -31,9 +33,18 @@ export function restoreReducer(
   // In this case, we'll continue to use the existing tree so the router doesn't get into an invalid state.
   let treeToRestore: FlightRouterState | undefined
   let renderedSearch: string | undefined
+  const restoredUrl = action.url
   const historyState = action.historyState
   if (historyState) {
-    treeToRestore = historyState.tree
+    const historyTreePath = extractPathFromFlightRouterState(historyState.tree)
+    // External pushState/replaceState calls copy the current history entry.
+    // Don't install that tree if the caller changed to a different route.
+    treeToRestore =
+      historyTreePath !== undefined &&
+      historyTreePath !==
+        removeTrailingSlash(removeBasePath(restoredUrl.pathname))
+        ? state.tree
+        : historyState.tree
     renderedSearch = historyState.renderedSearch
   } else {
     treeToRestore = state.tree
@@ -41,7 +52,6 @@ export function restoreReducer(
   }
 
   const currentUrl = new URL(state.canonicalUrl, location.origin)
-  const restoredUrl = action.url
   const restoredNextUrl =
     extractPathFromFlightRouterState(treeToRestore) ?? restoredUrl.pathname
   const navigationLock = getCurrentNavigationLock()

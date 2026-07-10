@@ -1,9 +1,106 @@
 import { nextTestSetup } from 'e2e-utils'
-import { check } from 'next-test-utils'
+import { check, retry } from 'next-test-utils'
 
 describe('shallow-routing', () => {
-  const { next } = nextTestSetup({
+  const { next, isNextDev } = nextTestSetup({
     files: __dirname,
+  })
+
+  it('should not revert external history updates with a prefetched link and cookie redirect', async () => {
+    const browser = await next.browser('/pushstate-prefetch-revert?period=7d')
+    const waitForTwoFrames = () =>
+      browser.eval(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => resolve())
+            })
+          })
+      )
+
+    await retry(async () => {
+      expect(await browser.eval(() => document.cookie)).toContain('period=7d')
+    })
+
+    // Exercise the proxy redirect before reproducing the history update.
+    await browser.get(`${next.url}/pushstate-prefetch-revert`)
+    expect(await browser.url()).toBe(
+      `${next.url}/pushstate-prefetch-revert?period=7d`
+    )
+    await browser.waitForElementByCss('#prefetched-period')
+    if (!isNextDev) {
+      await retry(async () => {
+        expect(await browser.eval(() => document.cookie)).toContain(
+          'prefetched-period=1'
+        )
+      })
+    }
+
+    const pageLoadId = await browser.eval(() => {
+      ;(window as any).__shallowRoutingPageLoadId = 1
+      const originalReplaceState = window.history.replaceState
+      ;(window as any).__nextReplaceStateUrls = []
+      window.history.replaceState = function replaceState(data, unused, url) {
+        const href = new URL(url ?? window.location.href, window.location.href)
+          .href
+        ;(window as any).__nextReplaceStateUrls.push(href)
+        return originalReplaceState.call(window.history, data, unused, url)
+      }
+      return (window as any).__shallowRoutingPageLoadId as number
+    })
+
+    await browser.elementByCss('#push-period').click()
+
+    await retry(async () => {
+      expect(await browser.elementByCss('#client-period').text()).toBe(
+        'client period: 90d'
+      )
+      expect(await browser.elementByCss('#server-period').text()).toBe(
+        'server period: 90d'
+      )
+    })
+    await waitForTwoFrames()
+    expect(await browser.url()).toBe(
+      `${next.url}/pushstate-prefetch-revert?period=90d`
+    )
+    expect(
+      await browser.eval(
+        () => (window as any).__shallowRoutingPageLoadId as number
+      )
+    ).toBe(pageLoadId)
+    expect(
+      await browser.eval(
+        () => (window as any).__nextReplaceStateUrls as string[]
+      )
+    ).not.toContain(`${next.url}/pushstate-prefetch-revert?period=7d`)
+
+    await browser.eval(() => {
+      ;(window as any).__nextReplaceStateUrls = []
+    })
+    await browser.elementByCss('#replace-period').click()
+
+    await retry(async () => {
+      expect(await browser.elementByCss('#client-period').text()).toBe(
+        'client period: 30d'
+      )
+      expect(await browser.elementByCss('#server-period').text()).toBe(
+        'server period: 30d'
+      )
+    })
+    await waitForTwoFrames()
+    expect(await browser.url()).toBe(
+      `${next.url}/pushstate-prefetch-revert?period=30d`
+    )
+    expect(
+      await browser.eval(
+        () => (window as any).__shallowRoutingPageLoadId as number
+      )
+    ).toBe(pageLoadId)
+    expect(
+      await browser.eval(
+        () => (window as any).__nextReplaceStateUrls as string[]
+      )
+    ).not.toContain(`${next.url}/pushstate-prefetch-revert?period=90d`)
   })
 
   describe('pushState', () => {
